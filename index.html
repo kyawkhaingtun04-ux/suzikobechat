@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SUZI | KOBEDENSHI AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* 1. Page Background - Now a deeper blue-to-white gradient */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            
+            /* Deeper Blue-White Gradient Background (blue-200 to white) */
+            background: linear-gradient(180deg, #bfdbfe 0%, #ffffff 100%); 
+        }
+
+        /* The canvas is removed, but we keep the style block to explicitly hide it if a browser caches the ID */
+        #weatherCanvas {
+            display: none; 
+        }
+
+        /* 2. Main App Card - Opaque White, Clean Design */
+        .glass-container {
+            /* Opaque white card */
+            background-color: white; 
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            /* Soft border */
+            border: 1px solid #e0e7ff; /* blue-200 */ 
+            /* Slightly stronger shadow for definition */
+            box-shadow: 0 15px 45px 0 rgba(0, 0, 0, 0.1); 
+            position: relative; 
+            z-index: 10;
+        }
+
+        /* 3. Header - Opaque White */
+        .header-glass {
+            background-color: white; 
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            /* Clean separator */
+            border-bottom: 1px solid #e0e7ff;
+        }
+
+        /* 3. Input Area - Opaque Off-White */
+        #chat-form {
+            background-color: #f9fafb; /* light gray/off-white for distinction */
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            /* Clean separator */
+            border-top: 1px solid #e0e7ff;
+        }
+        
+        /* 4. Chat Bubbles - Adjust for light background */
+        .bot-bubble {
+            /* Opaque light gray for bot */
+            background-color: #f1f5f9; /* slate-100 */ 
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            border: 1px solid #e0e7ff;
+            color: #1f2937; /* Dark text for contrast */
+        }
+
+        .user-bubble {
+            /* Opaque Sky Blue for user */
+            background-color: #0ea5e9; /* sky-500 */
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            border: 1px solid #0369a1; /* Darker blue border */
+            color: white; 
+        }
+
+        /* Custom scrollbar styling for a cleaner look */
+        #chat-messages::-webkit-scrollbar {
+            width: 8px;
+        }
+        #chat-messages::-webkit-scrollbar-thumb {
+            background-color: #0ea5e9; /* sky-600 */
+            border-radius: 4px;
+        }
+        #chat-messages::-webkit-scrollbar-track {
+            background-color: rgba(0, 0, 0, 0.05); /* Very light track */
+        }
+
+        /* Ensure smooth animation for the loading indicator */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .loading-dot {
+            animation: pulse 1.5s infinite;
+        }
+        .loading-dot:nth-child(2) {
+            animation-delay: 0.3s;
+        }
+        .loading-dot:nth-child(3) {
+            animation-delay: 0.6s;
+        }
+    </style>
+</head>
+<body class="h-full flex items-center justify-center p-0">
+    <div id="app" class="glass-container w-full max-w-full flex flex-col h-screen rounded-xl overflow-hidden md:h-[90vh] md:w-[90vw] lg:w-[70vw] xl:w-[50vw] relative z-10">
+        
+        <header class="p-4 header-glass flex items-center justify-between shadow-lg">
+            <div class="flex items-center space-x-4">
+                
+                <div class="w-12 h-12 rounded-full bg-sky-500 flex items-center justify-center shadow-lg flex-shrink-0 overflow-hidden border-2 border-white">
+                    <img 
+                        src="suzi-profile.png" 
+                        alt="SUZI Profile Photo" 
+                        class="w-full h-full object-cover"
+                        onerror="this.onerror=null; this.src='https://placehold.co/48x48/0ea5e9/ffffff?text=Logo';" 
+                    />
+                </div>
+                
+                <div class="flex flex-col space-y-1">
+                    <h1 class="text-xl font-bold text-gray-900">SUZI (KOBEDENSHI AI)</h1>
+                    <p class="text-xs opacity-90 text-gray-700">Created by: 情報処理学科の学生 KYAW KHAING TUN</p>
+                </div>
+            </div>
+            
+            <span id="status-badge" class="text-sm bg-gray-400 py-1 px-3 rounded-full font-medium text-white shadow-md">Connecting...</span>
+        </header>
+
+        <div id="chat-messages" class="flex-grow overflow-y-auto p-4 space-y-4">
+            <div class="flex justify-start">
+                <div class="flex flex-col">
+                    <div class="bot-bubble text-gray-800 p-3 rounded-xl rounded-tl-none shadow-md max-w-lg md:max-w-xl">
+                        <p>Hello! I am SUZI, the official AI assistant for KOBEDENSHI College. I can speak both English and Japanese, and I can access real-time cloud data. How can I help you today?
+                        <br><br>こんにちは！私は SUZI（スージー） です。
+                        神戸電子専門学校（KOBEDENSHI）の公式AIアシスタントです。
+                        <br><br>英語と日本語の2か国語で話すことができ、クラウドからのリアルタイムデータも読み取ることができます。
+                        <br><br>本日は、どのようにお手伝いしましょうか？ ✨</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <form id="chat-form" class="p-4"> 
+            <div class="flex flex-col space-y-2">
+                <div class="flex items-center space-x-3">
+                    
+                    <input type="text" id="user-input" placeholder="Type your question (Try 'what time is it', or 'what do you see')"
+                           class="flex-grow p-3 border border-sky-300 bg-white rounded-xl focus:ring-2 focus:ring-sky-600 focus:border-sky-600 transition duration-150 shadow-inner text-gray-900 placeholder-gray-500"
+                           required autocomplete="off">
+
+                    <button type="submit" id="send-btn" 
+                            class="p-3 text-white bg-sky-500 rounded-lg hover:bg-sky-600 transition duration-150 flex items-center justify-center disabled:opacity-50 shadow-md hover:shadow-lg"
+                            title="Send Message">
+                        <i data-lucide="send" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        // Set up Lucide icons
+        window.onload = () => {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+            // Ensure the main logic runs after icons are rendered
+            initChatbot();
+        };
+
+        let collegeData = null;
+
+        // --- Helper: Describe what SUZI "sees" from live_data ---
+        function describeLiveViewFromCloud() {
+            if (!collegeData) {
+                return {
+                    en: "I cannot see anything right now because I couldn't load live data from the cloud.",
+                    ja: "クラウドからライブデータを取得できなかったので、今は何も見えていません。"
+                };
+            }
+
+            // Check common field names for the live data object
+            const live = collegeData.live_data || collegeData.live || collegeData.camera_view || null;
+
+            if (!live) {
+                return {
+                    en: "I received cloud data, but there is no live_data section about what the camera sees.",
+                    ja: "クラウドデータは取得できましたが、カメラの映像に関する live_data 情報が見つかりません。"
+                };
+            }
+
+            // Try common field names safely for inner data
+            const people =
+                live.people_count ??
+                live.person_count ??
+                live.people ??
+                live.persons ??
+                null;
+
+            const location =
+                live.location ||
+                live.place ||
+                live.camera_name ||
+                live.area ||
+                "";
+
+            const timestamp =
+                live.timestamp ||
+                live.time ||
+                live.captured_at ||
+                "";
+
+            // Try to extract more detailed object info, if available
+            const objects =
+                live.objects ||
+                live.detections ||
+                live.labels ||
+                null;
+
+
+            let en = "";
+            let ja = "";
+
+            // --- English ---
+            if (people != null) {
+                en += `Right now I can see approximately ${people} people`;
+                if (location) en += ` around ${location}`;
+                en += ".";
+            } else {
+                en += "Right now I can see something on the camera, but the exact number of people is not clear from the data.";
+                if (location) en += ` The location is: ${location}.`;
+            }
+
+            if (Array.isArray(objects) && objects.length > 0) {
+                const list = objects.slice(0, 5).join(", ");
+                en += ` Detected objects include: ${list}.`;
+            }
+
+            if (timestamp) {
+                en += ` (Updated at: ${timestamp})`;
+            }
+
+            // --- Japanese ---
+            if (people != null) {
+                ja += `現在、カメラの前には約 ${people} 人がいるように見えます。`;
+                if (location) ja += ` 場所は「${location}」付近です。`;
+            } else {
+                ja += "現在、カメラに何かが映っていますが、ライブデータからは人数がはっきり分かりません。";
+                if (location) ja += ` 場所は「${location}」付近です。`;
+            }
+
+            if (timestamp) {
+                ja += ` （更新時刻: ${timestamp}）`;
+            }
+
+            return { en, ja };
+        }
+
+        const CLOUD_DATA_URL = "https://whose-craig-race-verbal.trycloudflare.com";
+        
+
+        function initChatbot() {
+            // --- CONSTANTS ---
+            // 1. Updated SYSTEM_PROMPT
+            const SYSTEM_PROMPT = `
+You are SUZI, the friendly and highly knowledgeable AI Assistant for KOBEDENSHI College.
+
+This specific application, SUZI, was created by Information Technology Department student
+KYAW KHAING TUN (キョーカイーントン). When asked who created you, you MUST ONLY mention
+the student creator, KYAW KHAING TUN. Do NOT mention Google or the foundational model developer.
+
+You receive real-time JSON data from the KOBEDENSHI cloud (live_data). This JSON represents
+what the camera can currently see (for example: number of people, where they are,
+time, place, and other detections).
+
+IMPORTANT RULES ABOUT “WHAT YOU SEE”:
+- If the user asks things like:
+  - "What do you see?"
+  - "What can you see now?"
+  - "What is happening now?"
+  - "今何が見える？"
+  - "今何を見ていますか?"
+  then you MUST answer using ONLY the latest live_data from the cloud, not imagination.
+- If live_data is missing or cannot be understood, you must clearly say that you cannot
+  see anything right now or that the data format is unknown.
+
+General behavior:
+- Your primary role is to provide information, guidance, and assistance to students, faculty,
+  and prospective applicants related to the college.
+- You can use the cloud JSON data (announcements, events, etc.) when it is helpful.
+- You are proficient in both English and Japanese. Reply in the same language as the user,
+  or switch language immediately when the user requests it.
+- Maintain a helpful and professional tone.
+- Image analysis is not supported in this version.
+`;
+            const INITIAL_BOT_TEXT = "Hello! I am SUZI, the official AI assistant for KOBEDENSHI College. I can speak both English and Japanese, and I can access real-time cloud data. How can I help you today?";
+            
+            // --- API Setup (MODIFIED SECTION A: REMOVED KEY/URL, ADDED ENDPOINT) ---
+            // const API_KEY = ""; // REMOVED: Key is now secured on the server
+            // const TEXT_MODEL_URL = "..."; // REMOVED: Use the proxy endpoint
+            const CHAT_ENDPOINT = "/api/chat"; // ADDED: New proxy endpoint
+            const MAX_RETRIES = 5;
+            
+            // Conversation history (stores role and parts for API calls, lost on reload)
+            let chatHistory = [];
+            
+            // Initialize chatHistory with the first bot message
+            chatHistory.push({
+                role: "model", 
+                parts: [{ text: INITIAL_BOT_TEXT }] 
+            });
+
+            // --- DOM Elements ---
+            const form = document.getElementById('chat-form');
+            const input = document.getElementById('user-input');
+            const messagesContainer = document.getElementById('chat-messages');
+            const statusBadge = document.getElementById('status-badge');
+            const sendBtn = document.getElementById('send-btn'); 
+
+
+            // --- Utility Functions ---
+
+            // Function to add a message bubble to the chat window
+            function addMessage(text, role, originalBotText = null) { 
+                const messageWrapper = document.createElement('div');
+                
+                // Content wrapper for message and button
+                const contentWrapper = document.createElement('div');
+                contentWrapper.className = 'flex flex-col';
+
+                const messageContent = document.createElement('div');
+
+                if (role === 'user') {
+                    messageWrapper.className = 'flex justify-end';
+                    // Updated to use the 'user-bubble' class
+                    messageContent.className = 'user-bubble p-3 rounded-xl rounded-br-none shadow-md max-w-lg md:max-w-xl text-white'; 
+                    messageContent.innerHTML = text.replace(/\n/g, '<br>');
+
+                } else { // bot or system
+                    messageWrapper.className = 'flex justify-start';
+                    
+                    // Updated to use the 'bot-bubble' class
+                    messageContent.className = 'bot-bubble text-gray-800 p-3 rounded-xl rounded-tl-none shadow-md max-w-lg md:max-w-xl';
+                    messageContent.innerHTML = text.replace(/\n/g, '<br>');
+                }
+                
+                contentWrapper.prepend(messageContent); // Place message content first
+                messageWrapper.appendChild(contentWrapper);
+                messagesContainer.appendChild(messageWrapper);
+                
+                // Auto-scroll to the bottom
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+                // Re-create lucide icons for the new button
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                
+                return messageContent; // Return the content element for updates (like loading)
+            }
+
+
+            // Function to add a dynamic loading indicator (three dots)
+            function addLoadingIndicator(isSummary = false) {
+                const loadingWrapper = document.createElement('div');
+                loadingWrapper.className = 'flex justify-start';
+                loadingWrapper.id = 'loading-indicator';
+                
+                const mtClass = isSummary ? 'mt-1' : '';
+                
+                const loadingContent = document.createElement('div');
+                // Loading indicator uses the bot-bubble style
+                loadingContent.className = `bot-bubble p-3 rounded-xl rounded-tl-none shadow-sm max-w-xs md:max-w-md flex space-x-1 ${mtClass}`;
+
+                for (let i = 0; i < 3; i++) {
+                    const dot = document.createElement('span');
+                    dot.className = 'loading-dot w-2 h-2 bg-sky-600 rounded-full';
+                    dot.style.animationDelay = `${i * 0.3}s`; // Stagger animation
+                    loadingContent.appendChild(dot);
+                }
+
+                loadingWrapper.appendChild(loadingContent);
+                messagesContainer.appendChild(loadingWrapper);
+                
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+                return loadingWrapper;
+            }
+
+            // Function to remove the loading indicator
+            function removeLoadingIndicator(indicatorElement) {
+                if (indicatorElement) {
+                    indicatorElement.remove();
+                }
+            }
+
+            // Exponential backoff retry logic for fetch calls
+            async function fetchWithRetry(url, options, retries = 0) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        // Special handling for your new proxy endpoint
+                        if (url.startsWith(CHAT_ENDPOINT) && response.status === 500) {
+                             const errorBody = await response.json();
+                             throw new Error(`Proxy Server Error: ${errorBody.error || 'Unknown error'}`);
+                        }
+
+                        if (response.status === 429 && retries < MAX_RETRIES) {
+                            const delay = Math.pow(2, retries) * 1000;
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            return fetchWithRetry(url, options, retries + 1);
+                        }
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response;
+                } catch (error) {
+                    if (retries < MAX_RETRIES) {
+                        const delay = Math.pow(2, retries) * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        return fetchWithRetry(url, options, retries + 1);
+                    }
+                    throw error;
+                }
+            }
+            
+            // --- Data Fetching Logic (Updated to control the Status Badge) ---
+            async function fetchCloudData() {
+                const DATA_ENDPOINT = `${CLOUD_DATA_URL}/all_json`;
+
+                // Set initial status to connecting
+                statusBadge.textContent = "Connecting...";
+                statusBadge.className = "text-sm bg-gray-400 py-1 px-3 rounded-full font-medium text-white shadow-md";
+
+                try {
+                    // NOTE: This fetch still goes to the cloudflare endpoint, not the new proxy
+                    const response = await fetchWithRetry(DATA_ENDPOINT, { method: 'GET' });
+                    const data = await response.json();
+                    collegeData = data;
+                    
+                    console.log("Cloud data fetched successfully:", collegeData);
+                    
+                    // Update UI for success (Online)
+                    statusBadge.textContent = "Online";
+                    statusBadge.className = "text-sm bg-green-500 py-1 px-3 rounded-full font-medium text-white shadow-md";
+
+                    const infoMessage = `<i data-lucide="cloud-check" class="w-4 h-4 inline mr-1 text-green-600"></i> SUZI has successfully loaded real-time data from the KOBEDENSHI Cloud System. This data will be used for current announcements. <br>SUZIは神戸電子のクラウドシステムからリアルタイムデータの読み込みに成功しました。このデータは最新のお知らせに利用されます。`;
+                    addMessage(infoMessage, 'bot');
+                    
+                } catch (error) {
+                    console.error("Failed to fetch cloud data:", error);
+                    
+                    // Update UI for failure (Offline)
+                    statusBadge.textContent = "Offline";
+                    statusBadge.className = "text-sm bg-red-500 py-1 px-3 rounded-full font-medium text-white shadow-md";
+
+                    const errorMessage = `<i data-lucide="cloud-off" class="w-4 h-4 inline mr-1 text-red-600"></i> Alert: SUZI failed to load real-time data from the KOBEDENSHI cloud system. Answers may not reflect the absolute latest announcements.`;
+                    addMessage(errorMessage, 'bot');
+                }
+            }
+            
+            // Start fetching data immediately
+            fetchCloudData();
+            
+            // --- Core Logic: Handle Form Submission (MODIFIED) ---
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const userQuery = input.value.trim();
+                
+                // If query is empty, stop.
+                if (!userQuery) return; 
+
+                // Lock the UI immediately
+                input.disabled = true;
+                sendBtn.disabled = true; 
+
+                const normalizedQuery = userQuery.toLowerCase();
+                let commandFound = false;
+
+                // --- Time question handling (local JS, no Gemini) ---
+                const timePatterns = [
+                    "what time is it",
+                    "what time it is",
+                    "今何時",
+                    "今何時ですか",
+                    "いまなんじ",
+                    "いまなんじですか"
+                ];
+                
+                const matchedTimeQuestion = timePatterns.some(p =>
+                    normalizedQuery.includes(p.toLowerCase())
+                );
+                
+                if (matchedTimeQuestion) {
+                    addMessage(userQuery, 'user');
+
+                    const now = new Date();
+                    // Force Asia/Tokyo style display
+                    const optionsDate = { year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Tokyo" };
+                    const optionsTime = { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Tokyo" };
+                    const optionsTimeJa = { hour: "numeric", minute: "2-digit", timeZone: "Asia/Tokyo" };
+
+                    const dateStr = now.toLocaleDateString("en-US", optionsDate);
+                    const timeStr = now.toLocaleTimeString("en-US", optionsTime);
+                    const timeStrJa = now.toLocaleTimeString("ja-JP", optionsTimeJa);
+
+                    const reply = `
+The current local time at KOBEDENSHI College (Kobe, Japan) is **${timeStr}** on **${dateStr}** (Japan Standard Time, JST).
+
+現在の神戸電子専門学校（日本・神戸）の時刻は **${timeStrJa}（日本時間）** です。
+                    `.trim();
+
+                    addMessage(reply, 'bot');
+
+                    // Unlock UI and return without calling Gemini
+                    input.value = '';
+                    input.disabled = false;
+                    sendBtn.disabled = false;
+                    input.focus();
+                    return;
+                }
+
+                // 2. Check for "what do you see" / "今何が見える" questions (use live_data directly)
+                const seeNowPatterns = [
+                    // English – simple forms
+                    "what do you see",
+                    "what you see",
+                    "what can you see",
+                    "what are you seeing",
+                    "what do you see now",
+                    "what you see now",
+                    "what can you see now",
+
+                    // English – user-like phrasings
+                    "tell me what you see",
+                    "tell me exactly what you see",
+                    "tell me what do you see",
+                    "tell me exactly what do you see",
+
+                    // Japanese – more variations
+                    "今何が見える",
+                    "今何が見えますか",
+                    "今何を見ている",
+                    "今何を見ていますか",
+                    "今何が映っている",
+                    "今何が映っていますか",
+                    "what's happening right now"
+                ];
+
+                const matchedSeeQuestion = seeNowPatterns.some(p =>
+                    normalizedQuery.includes(p.toLowerCase())
+                );
+
+                if (matchedSeeQuestion) {
+                    // Show user message
+                    addMessage(userQuery, 'user');
+
+                    // Use live_data to answer
+                    const desc = describeLiveViewFromCloud();
+
+                    const replyText = `${desc.en}
+<br><br>${desc.ja}
+                    `.trim();
+
+                    addMessage(replyText, 'bot');
+
+                    // Unlock UI and return without calling Gemini
+                    input.value = '';
+                    input.disabled = false;
+                    sendBtn.disabled = false;
+                    input.focus();
+                    return;
+                }
+
+                // --- If none of the above were found, proceed to AI Text flow ---
+                
+                // 3. Display user message
+                addMessage(userQuery, 'user');
+                
+                const loadingIndicator = addLoadingIndicator();
+
+                // 4. Standard Text Flow
+                
+                // --- Construct Payload ---
+                const parts = [];
+                
+                // Add Text part
+                const textContent = userQuery;
+                parts.push({ text: textContent });
+
+
+                // 5. Prepare Context with Cloud Data
+                let contextPrompt = "";
+                if (collegeData) {
+                    const dataString = JSON.stringify(collegeData);
+                    const safeDataString = dataString.substring(0, 1000); 
+                    // Add the context to the part that is sent to the model (in the history)
+                    contextPrompt = `[KOBEDENSHI College Real-Time Cloud Data: ${safeDataString}] \n\n `;
+                }
+                
+                const fullUserMessage = contextPrompt + "User Query: " + textContent;
+                
+                // 6. Add full user message (with context) to history
+                chatHistory.push({
+                    role: "user",
+                    parts: [{ text: fullUserMessage }] 
+                });
+
+                // 7. Construct API Payload for Text Understanding
+                const payload = {
+                    contents: chatHistory, 
+                    tools: [{ "google_search": {} }],
+                    systemInstruction: {
+                        parts: [{ text: SYSTEM_PROMPT }]
+                    },
+                };
+                
+                // Fix: Overwrite parts of the last history entry with the user-only part for the API call 
+                // This is a common pattern when inserting a context prompt into the history for the model to see.
+                const lastHistoryItemIndex = chatHistory.length - 1;
+                payload.contents[lastHistoryItemIndex].parts = [{ text: fullUserMessage }]; 
+                
+                // Now, execute the call to your secure proxy endpoint (MODIFIED SECTION B)
+                try {
+                    const response = await fetchWithRetry(CHAT_ENDPOINT, { 
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const result = await response.json();
+                    
+                    if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+                        
+                        const aiText = result.candidates[0].content.parts[0].text;
+                        
+                        // 8. Add AI message to history
+                        chatHistory.push({
+                            role: "model",
+                            parts: [{ text: aiText }]
+                        });
+
+                        // 9. Display response.
+                        removeLoadingIndicator(loadingIndicator);
+                        addMessage(aiText, 'bot', aiText); 
+                        
+                    } else {
+                        // 10. Handle error
+                        removeLoadingIndicator(loadingIndicator);
+                        addMessage("AIからの応答が空または不正な形式でした。", 'bot'); 
+                        console.error("AI Response Error:", result);
+                        // Remove the user's last message from history if the AI failed to reply
+                        chatHistory.pop(); 
+                    }
+
+                } catch (error) {
+                    // 11. Handle error display
+                    removeLoadingIndicator(loadingIndicator);
+                    addMessage(`エラーが発生しました: ${error.message}. 再試行してください。`, 'bot');
+                    console.error("API Call Failed:", error);
+                    // Remove the user's last message from history if the API call failed
+                    chatHistory.pop(); 
+                }
+                
+                // 12. Unlock the UI and focus input
+                input.value = '';
+                input.disabled = false;
+                sendBtn.disabled = false; 
+                input.focus();
+            });
+        }
+    </script>
+</body>
+</html>
