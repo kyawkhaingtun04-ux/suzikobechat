@@ -131,9 +131,9 @@
             <div class="flex justify-start">
                 <div class="flex flex-col">
                     <div class="bot-bubble text-gray-800 p-3 rounded-xl rounded-tl-none shadow-md max-w-lg md:max-w-xl">
-                        <p>Hello! I am SUZI, the official AI assistant for KOBEDENSHI College. I can speak both English and Japanese, and I can access real-time cloud data. How can I help you today?
+                        <p>Hello! I am SUZI, the testing AI assistant for KOBEDENSHI College. I can speak both English and Japanese, and I can access real-time cloud data. How can I help you today?
                         <br><br>こんにちは！私は SUZI（スージー） です。
-                        神戸電子専門学校（KOBEDENSHI）の公式AIアシスタントです。
+                        神戸電子専門学校（KOBEDENSHI）のテスティングAIアシスタントです。
                         <br><br>英語と日本語の2か国語で話すことができ、クラウドからのリアルタイムデータも読み取ることができます。
                         <br><br>本日は、どのようにお手伝いしましょうか？ ✨</p>
                     </div>
@@ -180,8 +180,9 @@
                 };
             }
 
-            // Check common field names for the live data object
-            const live = collegeData.live_data || collegeData.live || collegeData.camera_view || null;
+            // 1️⃣ Find live_data from aicloud
+            // /all_json → { live_data: { history: [...] }, ... }
+            let live = collegeData.live_data || collegeData.live || collegeData.camera_view || null;
 
             if (!live) {
                 return {
@@ -190,15 +191,32 @@
                 };
             }
 
-            // Try common field names safely for inner data
-            const people =
-                live.people_count ??
-                live.person_count ??
-                live.people ??
-                live.persons ??
-                null;
+            // 2️⃣ Normalize to “last frame”
+            // aicloud: live = { history: [ { timestamp_readable, source, objects:[...] }, ... ] }
+            let frame = null;
+
+            if (Array.isArray(live.history) && live.history.length > 0) {
+                // Use the newest frame
+                frame = live.history[live.history.length - 1];
+            } else if (live.data && Array.isArray(live.data.history) && live.data.history.length > 0) {
+                // In case live is something like { data: { history: [...] } }
+                frame = live.data.history[live.data.history.length - 1];
+            } else if (Array.isArray(live.objects)) {
+                // Single-frame style
+                frame = live;
+            }
+
+            if (!frame) {
+                return {
+                    en: "I received live_data, but there is no valid frame (history) inside.",
+                    ja: "live_data はありますが、有効なフレーム（history）が見つかりません。"
+                };
+            }
+
+            const objects = Array.isArray(frame.objects) ? frame.objects : [];
 
             const location =
+                frame.source ||
                 live.location ||
                 live.place ||
                 live.camera_name ||
@@ -206,51 +224,118 @@
                 "";
 
             const timestamp =
-                live.timestamp ||
-                live.time ||
-                live.captured_at ||
+                frame.timestamp_readable ||
+                frame.timestamp ||
+                frame.time ||
+                frame.captured_at ||
                 "";
 
-            // Try to extract more detailed object info, if available
-            const objects =
-                live.objects ||
-                live.detections ||
-                live.labels ||
-                null;
+            // 3️⃣ Count labels (person, chair, laptop, etc.)
+            const labelCounts = {};
+            let peopleCount = 0;
 
+            for (const obj of objects) {
+                if (!obj || !obj.label) continue;
+                const label = String(obj.label).toLowerCase();
+                labelCounts[label] = (labelCounts[label] || 0) + 1;
 
+                // Treat anything with “person / people / student / teacher” as a person
+                if (
+                    label.includes("person") ||
+                    label.includes("people") ||
+                    label.includes("student") ||
+                    label.includes("teacher")
+                ) {
+                    peopleCount += 1;
+                }
+            }
+
+            // Build “what exactly do you see” summary
+            let detailsEn = "";
+            let detailsJa = "";
+
+            const entries = Object.entries(labelCounts);
+            if (entries.length > 0) {
+                const top = entries
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 5); // show top 5
+
+                const enParts = top.map(([label, count]) => {
+                    const plural = count > 1 ? "s" : "";
+                    return `${count} ${label}${plural}`;
+                });
+
+                const jaParts = top.map(([label, count]) => `${label} が ${count} 個`);
+
+                detailsEn = ` I can clearly see ${enParts.join(", ")}.`;
+                detailsJa = ` 具体的には、${jaParts.join("、")} 映っています。`;
+            }
+
+            // 4️⃣ Guess what they might be doing from labels
+            function guessActivity(peopleCount, labels) {
+                const has = (...keys) =>
+                    keys.some(k => labels.has(k));
+
+                let en = "";
+                let ja = "";
+
+                if (peopleCount === 0 && labels.size === 0) {
+                    return { en, ja };
+                }
+
+                if (has("laptop", "notebook", "keyboard", "mouse", "monitor", "cell phone", "mobile phone")) {
+                    en = "They are probably using computers or digital devices, maybe studying or working.";
+                    ja = "おそらくパソコンやスマホなどのデジタル機器を使って、勉強したり作業したりしているようです。";
+                } else if (has("book", "textbook")) {
+                    en = "They are probably reading or studying.";
+                    ja = "本や教科書が映っているので、読書や勉強をしている可能性が高いです。";
+                } else if (has("dining table", "cup", "bottle", "bowl")) {
+                    en = "It looks like they might be eating, drinking, or taking a break.";
+                    ja = "テーブルやカップなどが映っているので、食事や休憩をしているように見えます。";
+                } else if (has("sports ball", "skateboard", "tennis racket")) {
+                    en = "They are probably doing some sports or physical activity.";
+                    ja = "ボールやスポーツ用品が映っているので、運動やスポーツをしていると思われます。";
+                } else if (peopleCount > 0 && has("chair", "bench")) {
+                    en = "They are probably sitting, talking, or waiting in that area.";
+                    ja = "イスやベンチが映っているので、その場所で座って話したり、待っていたりするようです。";
+                } else if (peopleCount > 0) {
+                    en = "They are probably walking around or standing and talking in that area.";
+                    ja = "人が映っているので、その場所を歩き回ったり、立ち話をしている様子だと思われます。";
+                }
+
+                return { en, ja };
+            }
+
+            const labelSet = new Set(Object.keys(labelCounts));
+            const activity = guessActivity(peopleCount, labelSet);
+
+            // 5️⃣ Build final English / Japanese sentences
             let en = "";
             let ja = "";
 
-            // --- English ---
-            if (people != null) {
-                en += `Right now I can see approximately ${people} people`;
+            if (peopleCount > 0) {
+                en += `Right now I can see exactly ${peopleCount} people`;
                 if (location) en += ` around ${location}`;
                 en += ".";
+                ja += `現在、カメラの前にははっきりと ${peopleCount} 人が映っています。`;
+                if (location) ja += ` 場所は「${location}」付近です。`;
             } else {
-                en += "Right now I can see something on the camera, but the exact number of people is not clear from the data.";
-                if (location) en += ` The location is: ${location}.`;
+                en += "Right now I can see objects on the camera, but no clear human shapes are detected.";
+                if (location) en += ` The camera is focused on: ${location}.`;
+                ja += "現在、カメラには物は映っていますが、人の姿ははっきり検出されていません。";
+                if (location) ja += ` カメラの場所は「${location}」付近です。`;
             }
 
-            if (Array.isArray(objects) && objects.length > 0) {
-                const list = objects.slice(0, 5).join(", ");
-                en += ` Detected objects include: ${list}.`;
+            en += detailsEn;
+            ja += detailsJa;
+
+            if (activity.en || activity.ja) {
+                en += " " + activity.en;
+                ja += " " + activity.ja;
             }
 
             if (timestamp) {
                 en += ` (Updated at: ${timestamp})`;
-            }
-
-            // --- Japanese ---
-            if (people != null) {
-                ja += `現在、カメラの前には約 ${people} 人がいるように見えます。`;
-                if (location) ja += ` 場所は「${location}」付近です。`;
-            } else {
-                ja += "現在、カメラに何かが映っていますが、ライブデータからは人数がはっきり分かりません。";
-                if (location) ja += ` 場所は「${location}」付近です。`;
-            }
-
-            if (timestamp) {
                 ja += ` （更新時刻: ${timestamp}）`;
             }
 
@@ -669,5 +754,4 @@ The current local time at KOBEDENSHI College (Kobe, Japan) is **${timeStr}** on 
         }
     </script>
 </body>
-
 </html>
