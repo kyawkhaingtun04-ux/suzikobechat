@@ -1,61 +1,92 @@
-// server.js
-const express = require('express');
-const fetch = require('node-fetch');
-const path = require('path');
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import os
+import requests
 
-const app = express();
-// Render automatically sets the PORT environment variable
-const PORT = process.env.PORT || 3000; 
+app = FastAPI()
 
-// 1. SECURE ACCESS: Get the key from the Render Environment Variables
-const API_KEY = process.env.GEMINI_API_KEY; 
-const TEXT_MODEL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+# CORS: allow your front-end to call this
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or ["https://your-frontend.onrender.com"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-app.use(express.json()); // Middleware to parse JSON bodies
+# 3 Gemini keys from environment (Render → Environment)
+GEMINI_KEYS = [
+    os.getenv("GEMINI_KEY_1"),
+    os.getenv("GEMINI_KEY_2"),
+    os.getenv("GEMINI_KEY_3"),
+]
 
-// 2. PROXY ENDPOINT: This handles the secure API call
-// The front-end makes a POST request to /api/chat
-app.post('/api/chat', async (req, res) => {
-    if (!API_KEY) {
-        // If the key is missing on Render, send a clear error message
-        return res.status(500).json({ error: "Server Error: Gemini API key not configured on Render environment." });
-    }
+GEMINI_MODEL_NAME = "gemini-pro"  # or your chosen model
 
-    // The entire payload (contents, systemInstruction, tools) is forwarded from the front-end
-    const payload = req.body;
-    
-    try {
-        const geminiResponse = await fetch(`${TEXT_MODEL_URL}?key=${API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
 
-        // The status of the Gemini response is passed through
-        if (!geminiResponse.ok) {
-            const errorText = await geminiResponse.text();
-            console.error("Gemini API Error:", geminiResponse.status, errorText);
-            return res.status(geminiResponse.status).json({ 
-                error: `Gemini API returned status ${geminiResponse.status}`,
-                details: errorText
-            });
-        }
+class ChatPayload(BaseModel):
+    # This will match exactly what your front-end sends:
+    # { contents: [...], tools: [...], systemInstruction: {...} }
+    contents: dict | list
+    tools: list | None = None
+    systemInstruction: dict | None = None
 
-        const result = await geminiResponse.json();
-        res.json(result); // Send the Gemini response back to the front-end
 
-    } catch (error) {
-        console.error("Proxy Call Failed:", error);
-        // Catch network errors or JSON parsing failures
-        res.status(500).json({ error: "Failed to communicate with the AI model due to a network or parsing error." });
-    }
-});
+def call_gemini_with_fallback(raw_payload: dict):
+    """
+    Try GEMINI_KEY_1 → if fail → GEMINI_KEY_2 → if fail → GEMINI_KEY_3
+    """
+    last_error = None
 
-// 3. SERVE FRONTEND: Serve the index.html file
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
+    for key in GEMINI_KEYS:
+        if not key:
+            continue  # skip empty ones
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+        try:
+            url = (
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{GEMINI_MODEL_NAME}:generateContent?key={key}"
+            )
+
+            # raw_payload already has: contents, tools, systemInstruction
+            response = requests.post(
+                url,
+                json=raw_payload,
+                timeout=20,
+            )
+
+            # If OK → return result immediately
+            if response.status_code == 200:
+                return response.json()
+
+            # If not OK → remember error and try next key
+            last_error = f"status={response.status_code}, body={response.text}"
+            print(f"[Gemini] Key failed, trying next one... ({last_error})")
+
+        except Exception as e:
+            last_error = str(e)
+            print(f"[Gemini] Exception with key, trying next one... ({last_error})")
+
+    # If all keys failed:
+    raise HTTPException(
+        status_code=500,
+        detail=f"All Gemini API keys failed. Last error: {last_error}",
+    )
+
+
+@app.post("/api/chat")
+def chat_with_suzi(payload: dict):
+    """
+    This endpoint is called by your front-end: fetch('/api/chat', { body: JSON.stringify(payload) })
+    We don't change payload structure, we just forward to Gemini with fallback keys.
+    """
+    try:
+        result = call_gemini_with_fallback(payload)
+        return result
+    except HTTPException as e:
+        # Let FastAPI send this as JSON { "detail": "..."}
+        raise e
+    except Exception as e:
+        print("[/api/chat] Unexpected error:", str(e))
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
