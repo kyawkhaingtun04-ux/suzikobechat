@@ -338,6 +338,22 @@ General behavior:
                 }
             }
             
+            // --- New Helper for Silent Cloud Data Refresh (STEP 1) ---
+            async function fetchLatestCloudDataSilent() {
+                const DATA_ENDPOINT = `${CLOUD_DATA_URL}/all_json`;
+
+                try {
+                    const response = await fetchWithRetry(DATA_ENDPOINT, { method: 'GET' });
+                    const data = await response.json();
+                    collegeData = data;
+                    console.log("Silent cloud refresh OK:", collegeData);
+                    return collegeData;
+                } catch (error) {
+                    console.error("Silent cloud refresh FAILED:", error);
+                    return null;
+                }
+            }
+            
             // --- Data Fetching Logic (Updated to control the Status Badge) ---
             async function fetchCloudData() {
                 const DATA_ENDPOINT = `${CLOUD_DATA_URL}/all_json`;
@@ -468,6 +484,9 @@ The current local time at KOBEDENSHI College (Kobe, Japan) is **${timeStr}** on 
                 if (matchedSeeQuestion) {
                     addMessage(userQuery, 'user');
                     const loadingIndicator = addLoadingIndicator();
+
+                    // 🔹 Always refresh from cloud for this question (STEP 2)
+                    await fetchLatestCloudDataSilent(); 
 
                     // 1️⃣ Get latest frame from live_data (Robust check)
                     let frame = null;
@@ -670,5 +689,3 @@ ${JSON.stringify(frame, null, 2)}
     </script>
 </body>
 </html>
-
-
