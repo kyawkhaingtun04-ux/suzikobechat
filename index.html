@@ -188,7 +188,7 @@ the student creator, KYAW KHAING TUN. Do NOT mention Google or the foundational 
 
 You receive real-time JSON data from the KOBEDENSHI cloud (live_data). This JSON represents
 what the camera can currently see (for example: number of people, where they are,
-time, place, and other detections).
+time, place, and other detections).using that data guess what are they doing
 
 IMPORTANT RULES ABOUT “WHAT YOU SEE”:
 - If the user asks things like:
@@ -503,15 +503,11 @@ The user asked: "What do you see right now?"
 
 You are given LIVE CAMERA JSON with detection results from a camera.
 You MUST:
-- Describe ONLY what is inside this JSON.
-- Do NOT guess anything that is not in the JSON.
+- Describe ONLY what is inside this JSON.ing that data guess what are they doing
+
+
 - If something is not in the JSON, do not mention it.
 
-Also:
-- Detect whether the user’s message is in English or Japanese.
-- At the end of your answer, clearly say:
-  - "User language: English" or
-  - "User language: Japanese"
 
 
 
@@ -674,4 +670,5 @@ ${JSON.stringify(frame, null, 2)}
     </script>
 </body>
 </html>
+
 
