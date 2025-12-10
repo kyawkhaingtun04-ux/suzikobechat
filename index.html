@@ -171,176 +171,7 @@
 
         let collegeData = null;
 
-        // --- Helper: Describe what SUZI "sees" from live_data ---
-        function describeLiveViewFromCloud() {
-            if (!collegeData) {
-                return {
-                    en: "I cannot see anything right now because I couldn't load live data from the cloud.",
-                    ja: "クラウドからライブデータを取得できなかったので、今は何も見えていません。"
-                };
-            }
-
-            // 1️⃣ Find live_data from aicloud
-            // /all_json → { live_data: { history: [...] }, ... }
-            let live = collegeData.live_data || collegeData.live || collegeData.camera_view || null;
-
-            if (!live) {
-                return {
-                    en: "I received cloud data, but there is no live_data section about what the camera sees.",
-                    ja: "クラウドデータは取得できましたが、カメラの映像に関する live_data 情報が見つかりません。"
-                };
-            }
-
-            // 2️⃣ Normalize to “last frame”
-            // aicloud: live = { history: [ { timestamp_readable, source, objects:[...] }, ... ] }
-            let frame = null;
-
-            if (Array.isArray(live.history) && live.history.length > 0) {
-                // Use the newest frame
-                frame = live.history[live.history.length - 1];
-            } else if (live.data && Array.isArray(live.data.history) && live.data.history.length > 0) {
-                // In case live is something like { data: { history: [...] } }
-                frame = live.data.history[live.data.history.length - 1];
-            } else if (Array.isArray(live.objects)) {
-                // Single-frame style
-                frame = live;
-            }
-
-            if (!frame) {
-                return {
-                    en: "I received live_data, but there is no valid frame (history) inside.",
-                    ja: "live_data はありますが、有効なフレーム（history）が見つかりません。"
-                };
-            }
-
-            const objects = Array.isArray(frame.objects) ? frame.objects : [];
-
-            const location =
-                frame.source ||
-                live.location ||
-                live.place ||
-                live.camera_name ||
-                live.area ||
-                "";
-
-            const timestamp =
-                frame.timestamp_readable ||
-                frame.timestamp ||
-                frame.time ||
-                frame.captured_at ||
-                "";
-
-            // 3️⃣ Count labels (person, chair, laptop, etc.)
-            const labelCounts = {};
-            let peopleCount = 0;
-
-            for (const obj of objects) {
-                if (!obj || !obj.label) continue;
-                const label = String(obj.label).toLowerCase();
-                labelCounts[label] = (labelCounts[label] || 0) + 1;
-
-                // Treat anything with “person / people / student / teacher” as a person
-                if (
-                    label.includes("person") ||
-                    label.includes("people") ||
-                    label.includes("student") ||
-                    label.includes("teacher")
-                ) {
-                    peopleCount += 1;
-                }
-            }
-
-            // Build “what exactly do you see” summary
-            let detailsEn = "";
-            let detailsJa = "";
-
-            const entries = Object.entries(labelCounts);
-            if (entries.length > 0) {
-                const top = entries
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 5); // show top 5
-
-                const enParts = top.map(([label, count]) => {
-                    const plural = count > 1 ? "s" : "";
-                    return `${count} ${label}${plural}`;
-                });
-
-                const jaParts = top.map(([label, count]) => `${label} が ${count} 個`);
-
-                detailsEn = ` I can clearly see ${enParts.join(", ")}.`;
-                detailsJa = ` 具体的には、${jaParts.join("、")} 映っています。`;
-            }
-
-            // 4️⃣ Guess what they might be doing from labels
-            function guessActivity(peopleCount, labels) {
-                const has = (...keys) =>
-                    keys.some(k => labels.has(k));
-
-                let en = "";
-                let ja = "";
-
-                if (peopleCount === 0 && labels.size === 0) {
-                    return { en, ja };
-                }
-
-                if (has("laptop", "notebook", "keyboard", "mouse", "monitor", "cell phone", "mobile phone")) {
-                    en = "They are probably using computers or digital devices, maybe studying or working.";
-                    ja = "おそらくパソコンやスマホなどのデジタル機器を使って、勉強したり作業したりしているようです。";
-                } else if (has("book", "textbook")) {
-                    en = "They are probably reading or studying.";
-                    ja = "本や教科書が映っているので、読書や勉強をしている可能性が高いです。";
-                } else if (has("dining table", "cup", "bottle", "bowl")) {
-                    en = "It looks like they might be eating, drinking, or taking a break.";
-                    ja = "テーブルやカップなどが映っているので、食事や休憩をしているように見えます。";
-                } else if (has("sports ball", "skateboard", "tennis racket")) {
-                    en = "They are probably doing some sports or physical activity.";
-                    ja = "ボールやスポーツ用品が映っているので、運動やスポーツをしていると思われます。";
-                } else if (peopleCount > 0 && has("chair", "bench")) {
-                    en = "They are probably sitting, talking, or waiting in that area.";
-                    ja = "イスやベンチが映っているので、その場所で座って話したり、待っていたりするようです。";
-                } else if (peopleCount > 0) {
-                    en = "They are probably walking around or standing and talking in that area.";
-                    ja = "人が映っているので、その場所を歩き回ったり、立ち話をしている様子だと思われます。";
-                }
-
-                return { en, ja };
-            }
-
-            const labelSet = new Set(Object.keys(labelCounts));
-            const activity = guessActivity(peopleCount, labelSet);
-
-            // 5️⃣ Build final English / Japanese sentences
-            let en = "";
-            let ja = "";
-
-            if (peopleCount > 0) {
-                en += `Right now I can see exactly ${peopleCount} people`;
-                if (location) en += ` around ${location}`;
-                en += ".";
-                ja += `現在、カメラの前にははっきりと ${peopleCount} 人が映っています。`;
-                if (location) ja += ` 場所は「${location}」付近です。`;
-            } else {
-                en += "Right now I can see objects on the camera, but no clear human shapes are detected.";
-                if (location) en += ` The camera is focused on: ${location}.`;
-                ja += "現在、カメラには物は映っていますが、人の姿ははっきり検出されていません。";
-                if (location) ja += ` カメラの場所は「${location}」付近です。`;
-            }
-
-            en += detailsEn;
-            ja += detailsJa;
-
-            if (activity.en || activity.ja) {
-                en += " " + activity.en;
-                ja += " " + activity.ja;
-            }
-
-            if (timestamp) {
-                en += ` (Updated at: ${timestamp})`;
-                ja += ` （更新時刻: ${timestamp}）`;
-            }
-
-            return { en, ja };
-        }
+        // --- Helper: describeLiveViewFromCloud() has been REMOVED as its functionality is now handled by the AI for cleaner, more flexible output. ---
 
         const CLOUD_DATA_URL = "https://cloud-1-gqld.onrender.com";
         
@@ -603,7 +434,7 @@ The current local time at KOBEDENSHI College (Kobe, Japan) is **${timeStr}** on 
                     return;
                 }
 
-                // 2. Check for "what do you see" / "今何が見える" questions (use live_data directly)
+                // 2. Check for "what do you see" / "今何が見える" questions (AI-BASED VISION MODE)
                 const seeNowPatterns = [
                     // English – simple forms
                     "what do you see",
@@ -635,19 +466,99 @@ The current local time at KOBEDENSHI College (Kobe, Japan) is **${timeStr}** on 
                 );
 
                 if (matchedSeeQuestion) {
-                    // Show user message
                     addMessage(userQuery, 'user');
+                    const loadingIndicator = addLoadingIndicator();
 
-                    // Use live_data to answer
-                    const desc = describeLiveViewFromCloud();
+                    // 1️⃣ Get latest frame from live_data (Robust check)
+                    let frame = null;
+                    let live = collegeData?.live_data || collegeData?.live || collegeData?.camera_view || null;
 
-                    const replyText = `${desc.en}
-<br><br>${desc.ja}
+                    if (Array.isArray(live?.history) && live.history.length > 0) {
+                        frame = live.history.at(-1);
+                    } else if (Array.isArray(live?.data?.history) && live.data.history.length > 0) {
+                        frame = live.data.history.at(-1);
+                    } else if (Array.isArray(live?.objects)) {
+                        // Single-frame style
+                        frame = live;
+                    }
+
+                    if (!frame) {
+                        removeLoadingIndicator(loadingIndicator);
+                        addMessage(
+                            "I cannot see anything right now because valid live camera data was not found.\n\n現在、有効なライブカメラのデータが取得できないため、何も確認できません。",
+                            "bot"
+                        );
+                        input.value = '';
+                        input.disabled = false;
+                        sendBtn.disabled = false;
+                        input.focus();
+                        return;
+                    }
+
+                    // 2️⃣ Send ONLY real JSON to AI
+                    const visionPrompt = `
+You are SUZI, the official AI assistant of KOBEDENSHI College.
+
+The user asked: "What do you see right now?"
+
+You MUST describe ONLY what is inside this JSON.
+DO NOT guess.
+DO NOT add imaginary people or objects.
+Explain clearly in:
+1) Natural English
+2) Natural Japanese
+
+LIVE CAMERA JSON:
+${JSON.stringify(frame, null, 2)}
                     `.trim();
 
-                    addMessage(replyText, 'bot');
+                    // Temporary push for this specific question
+                    const tempHistoryEntry = {
+                        role: "user",
+                        parts: [{ text: visionPrompt }]
+                    };
+                    chatHistory.push(tempHistoryEntry);
 
-                    // Unlock UI and return without calling Gemini
+                    const payload = {
+                        contents: chatHistory,
+                        tools: [{ "google_search": {} }],
+                        systemInstruction: {
+                            parts: [{ text: SYSTEM_PROMPT }]
+                        }
+                    };
+
+                    try {
+                        const response = await fetchWithRetry(CHAT_ENDPOINT, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(payload)
+                        });
+
+                        const result = await response.json();
+                        removeLoadingIndicator(loadingIndicator);
+
+                        if (result?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                            const aiReply = result.candidates[0].content.parts[0].text;
+
+                            // Add AI reply to history permanently
+                            chatHistory.push({
+                                role: "model",
+                                parts: [{ text: aiReply }]
+                            });
+
+                            addMessage(aiReply, "bot");
+                        } else {
+                            addMessage("AI failed to describe the camera view.", "bot");
+                            // Remove the temporary user prompt if AI failed
+                            chatHistory.pop();
+                        }
+                    } catch (err) {
+                        removeLoadingIndicator(loadingIndicator);
+                        addMessage("AI vision error: " + err.message, "bot");
+                        // Remove the temporary user prompt if fetch failed
+                        chatHistory.pop();
+                    }
+
                     input.value = '';
                     input.disabled = false;
                     sendBtn.disabled = false;
