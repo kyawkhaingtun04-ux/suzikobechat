@@ -15,7 +15,7 @@ const GEMINI_KEYS = [
     process.env.GEMINI_KEY_3,
 ].filter(key => key); // Filter out any undefined/null keys
 
-const GEMINI_MODEL_NAME = "gemini-pro"; 
+const GEMINI_MODEL_NAME = "gemini-1.5-flash"; 
 const BASE_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_NAME}:generateContent`;
 
 // --- Middleware ---
@@ -94,3 +94,4 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
+
