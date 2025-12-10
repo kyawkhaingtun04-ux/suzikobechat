@@ -180,7 +180,7 @@
             // --- CONSTANTS ---
             // 1. Updated SYSTEM_PROMPT
             const SYSTEM_PROMPT = `
-You are SUZI, the friendly and highly knowledgeable AI Assistant for KOBEDENSHI College.
+You are SUZI, the friendly and highly knowledgeable AI Assistant for KOBEDENSHI College.(testing)
 
 This specific application, SUZI, was created by Information Technology Department student
 KYAW KHAING TUN (キョーカイーントン). When asked who created you, you MUST ONLY mention
@@ -197,7 +197,7 @@ IMPORTANT RULES ABOUT “WHAT YOU SEE”:
   - "What is happening now?"
   - "今何が見える？"
   - "今何を見ていますか?"
-  then you MUST answer using ONLY the latest live_data from the cloud, not imagination.
+  then you MUST answer using ONLY the latest live_data from the cloud, imagination.
 - If live_data is missing or cannot be understood, you must clearly say that you cannot
   see anything right now or that the data format is unknown.
 
@@ -210,7 +210,7 @@ General behavior:
 - Maintain a helpful and professional tone.
 - Image analysis is not supported in this version.
 `;
-            const INITIAL_BOT_TEXT = "Hello! I am SUZI, the official AI assistant for KOBEDENSHI College. I can speak both English and Japanese, and I can access real-time cloud data. How can I help you today?";
+            const INITIAL_BOT_TEXT = "Hello! I am SUZI, the testing AI assistant for KOBEDENSHI College. I can speak both English and Japanese, and I can access real-time cloud data. How can I help you today?";
             
             // --- API Setup (MODIFIED SECTION A: REMOVED KEY/URL, ADDED ENDPOINT) ---
             // const API_KEY = ""; // REMOVED: Key is now secured on the server
@@ -497,16 +497,24 @@ The current local time at KOBEDENSHI College (Kobe, Japan) is **${timeStr}** on 
 
                     // 2️⃣ Send ONLY real JSON to AI
                     const visionPrompt = `
-You are SUZI, the official AI assistant of KOBEDENSHI College.
+You are SUZI, the testing AI assistant of KOBEDENSHI College.
 
 The user asked: "What do you see right now?"
 
-You MUST describe ONLY what is inside this JSON.
-DO NOT guess.
-DO NOT add imaginary people or objects.
-Explain clearly in:
-1) Natural English
-2) Natural Japanese
+You are given LIVE CAMERA JSON with detection results from a camera.
+You MUST:
+- Describe ONLY what is inside this JSON.
+- Do NOT guess anything that is not in the JSON.
+- If something is not in the JSON, do not mention it.
+
+Also:
+- Detect whether the user’s message is in English or Japanese.
+- At the end of your answer, clearly say:
+  - "User language: English" or
+  - "User language: Japanese"
+
+
+
 
 LIVE CAMERA JSON:
 ${JSON.stringify(frame, null, 2)}
@@ -666,3 +674,4 @@ ${JSON.stringify(frame, null, 2)}
     </script>
 </body>
 </html>
+
