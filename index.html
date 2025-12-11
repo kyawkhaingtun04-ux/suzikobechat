@@ -186,7 +186,7 @@ This specific application, SUZI, was created by Information Technology Departmen
 KYAW KHAING TUN (キョーカイーントン). When asked who created you, you MUST ONLY mention
 the student creator, KYAW KHAING TUN. Do NOT mention Google or the foundational model developer.
 
-You receive real-time JSON data from the KOBEDENSHI cloud (live_****). This JSON represents
+You receive real-time JSON data from the KOBEDENSHI cloud (live_data). This JSON represents
 what the camera can currently see (for example: number of people, where they are,
 time, place, and other detections).using that data guess what are they doing
 
@@ -197,7 +197,7 @@ IMPORTANT RULES ABOUT “WHAT YOU SEE”:
   - "What is happening now?"
   - "今何が見える？"
   - "今何を見ていますか?"
-  then you MUST answer using ONLY the latest live_data from the cloud, imagination.and if the user ask "what are they(he,she) doing?" you have to answer using that data guess and describe
+  then you MUST answer using ONLY the latest live_data from the cloud, imagination.
 - If live_data is missing or cannot be understood, you must clearly say that you cannot
   see anything right now or that the data format is unknown.
 
@@ -309,6 +309,63 @@ General behavior:
                 }
             }
 
+            // Try to find the newest live-data block in the cloud JSON
+            function extractLatestLiveBlock(collegeData) {
+                if (!collegeData) return null;
+
+                // 1) Old style: { ok: true, data: { history: [...] } }
+                if (collegeData.ok && collegeData.data && Array.isArray(collegeData.data.history)) {
+                    return collegeData.data;
+                }
+
+                // 2) Old style: { live_data: { history: [...] } }
+                if (collegeData.live_data && Array.isArray(collegeData.live_data.history)) {
+                    return collegeData.live_data;
+                }
+
+                // 3) New multi-location style: keys like "live_main_tower_3f"
+                for (const [key, value] of Object.entries(collegeData)) {
+                    if (key.startsWith("live_") && value && Array.isArray(value.history)) {
+                        return value;     // pick the first live_* block
+                    }
+                }
+
+                return null;
+            }
+
+            // Build a snapshot of the latest frame for ALL live_* locations
+            function buildLiveSnapshot(collegeData) {
+                if (!collegeData) return null;
+
+                const snapshot = {};
+
+                for (const [key, value] of Object.entries(collegeData)) {
+                    if (!key.startsWith("live_") || !value) continue;
+
+                    let latestFrame = null;
+
+                    // Pattern A: { history: [...] }
+                    if (Array.isArray(value.history) && value.history.length > 0) {
+                        latestFrame = value.history[value.history.length - 1];
+                    }
+                    // Pattern B: { data: { history: [...] } }
+                    else if (value.data && Array.isArray(value.data.history) && value.data.history.length > 0) {
+                        latestFrame = value.data.history[value.data.history.length - 1];
+                    }
+                    // Pattern C: { objects: [...] } (single frame style)
+                    else if (Array.isArray(value.objects)) {
+                        latestFrame = value;
+                    }
+
+                    if (latestFrame) {
+                        snapshot[key] = latestFrame;
+                    }
+                }
+
+                return snapshot;
+            }
+
+
             // Exponential backoff retry logic for fetch calls
             async function fetchWithRetry(url, options, retries = 0) {
                 try {
@@ -336,30 +393,6 @@ General behavior:
                     }
                     throw error;
                 }
-            }
-
-            // Try to find the newest live-data block in the cloud JSON
-            function extractLatestLiveBlock(collegeData) {
-                if (!collegeData) return null;
-
-                // 1) Old style: { ok: true, data: { history: [...] } }
-                if (collegeData.ok && collegeData.data && Array.isArray(collegeData.data.history)) {
-                    return collegeData.data;
-                }
-
-                // 2) Old style: { live_data: { history: [...] } }
-                if (collegeData.live_data && Array.isArray(collegeData.live_data.history)) {
-                    return collegeData.live_data;
-                }
-
-                // 3) New multi-location style: keys like "live_main_tower_3f"
-                for (const [key, value] of Object.entries(collegeData)) {
-                    if (key.startsWith("live_") && value && Array.isArray(value.history)) {
-                        return value;     // pick the first live_* block
-                    }
-                }
-
-                return null;
             }
             
             // --- New Helper for Silent Cloud Data Refresh (STEP 1) ---
@@ -512,21 +545,10 @@ The current local time at KOBEDENSHI College (Kobe, Japan) is **${timeStr}** on 
                     // 🔹 Always refresh from cloud for this question (STEP 2)
                     await fetchLatestCloudDataSilent(); 
 
-                    // 1️⃣ Get latest frame from live_data (supports multi-location)
-                    let frame = null;
-                    const live = extractLatestLiveBlock(collegeData);
-                    
-                    if (live) {
-                        if (Array.isArray(live.history) && live.history.length > 0) {
-                            frame = live.history[live.history.length - 1]; // newest frame
-                        } else if (Array.isArray(live.data?.history) && live.data.history.length > 0) {
-                            frame = live.data.history[live.data.history.length - 1];
-                        } else if (Array.isArray(live.objects)) {
-                            frame = live; // single-frame format
-                        }
-                    }
+                    // 1️⃣ Build snapshot for ALL live_* locations
+                    const snapshot = buildLiveSnapshot(collegeData);
 
-                    if (!frame) {
+                    if (!snapshot || Object.keys(snapshot).length === 0) {
                         removeLoadingIndicator(loadingIndicator);
                         addMessage(
                             "I cannot see anything right now because valid live camera data was not found.\n\n現在、有効なライブカメラのデータが取得できないため、何も確認できません。",
@@ -539,26 +561,27 @@ The current local time at KOBEDENSHI College (Kobe, Japan) is **${timeStr}** on 
                         return;
                     }
 
-                    // 2️⃣ Send ONLY real JSON to AI
+                    // 2️⃣ Send ALL live_* JSON to the AI
                     const visionPrompt = `
 You are SUZI, the testing AI assistant of KOBEDENSHI College.
 
-The user asked: "What do you see right now?"
+The user asked: "${userQuery}"
 
-You are given LIVE CAMERA JSON with detection results from a camera.
+You are given LIVE CAMERA JSON with detection results from multiple locations.
+Each key such as "live_本館", "live_hall", "live_エントランス" indicates the camera location.
+
 You MUST:
-- Describe ONLY what is inside this JSON.ing that data guess what are they doing
+- Use ONLY this JSON.
+- If the user mentions a specific location (e.g. 本館, ホール, エントランス),
+  focus your answer on that place.
+- If the location is not specified, you should summarize what is happening
+  across all locations.
+- Using that data, guess what people might be doing (for example: walking,
+  waiting, talking, entering the building), but keep your guesses realistic.
+- If something is not in the JSON, do NOT mention it.
 
-
-- If something is not in the JSON, do not mention it.
-
-
-
-
-
-LIVE CAMERA JSON:
-${JSON.stringify(frame, null, 2)}
-                    `.trim();
+LIVE CAMERA JSON:${JSON.stringify(snapshot, null, 2)}
+`.trim();
 
                     // Temporary push for this specific question
                     const tempHistoryEntry = {
@@ -714,4 +737,3 @@ ${JSON.stringify(frame, null, 2)}
     </script>
 </body>
 </html>
-
