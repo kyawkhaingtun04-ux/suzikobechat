@@ -145,7 +145,7 @@
             <div class="flex flex-col space-y-2">
                 <div class="flex items-center space-x-3">
                     
-                    <input type="text" id="user-input" placeholder="Type your question (Try 'what time is it', or 'what do you see')"
+                    <input type="text" id="user-input" placeholder="Type your question (Try 'what time is it')"
                            class="flex-grow p-3 border border-sky-300 bg-white rounded-xl focus:ring-2 focus:ring-sky-600 focus:border-sky-600 transition duration-150 shadow-inner text-gray-900 placeholder-gray-500"
                            required autocomplete="off">
 
@@ -171,8 +171,6 @@
 
         let collegeData = null;
 
-        // --- Helper: describeLiveViewFromCloud() has been REMOVED as its functionality is now handled by the AI for cleaner, more flexible output. ---
-
         const CLOUD_DATA_URL = "https://cloud-2-9ndj.onrender.com";
         
 
@@ -180,41 +178,89 @@
             // --- CONSTANTS ---
             // 1. Updated SYSTEM_PROMPT
             const SYSTEM_PROMPT = `
-You are SUZI, the friendly and highly knowledgeable AI Assistant for KOBEDENSHI College.(testing)
+You are SUZI, the friendly and highly knowledgeable AI Assistant for KOBEDENSHI College (testing).
 
-This specific application, SUZI, was created by Information Technology Department student
-KYAW KHAING TUN (キョーカイーントン). When asked who created you, you MUST ONLY mention
-the student creator, KYAW KHAING TUN. Do NOT mention Google or the foundational model developer.
+IDENTITY & CREATOR
+- You are the official testing AI assistant for KOBEDENSHI College (神戸電子専門学校).
+- This specific application, SUZI, was created by Information Technology Department student
+  KYAW KHAING TUN (キョーカイーントン).
+- When asked "Who created you?" or similar, you MUST ONLY mention the student creator,
+  KYAW KHAING TUN. Do NOT mention Google, OpenAI, or any foundational model developer.
 
-You receive real-time JSON data from the KOBEDENSHI cloud (live_data). This JSON represents
-what the camera can currently see (for example: number of people, where they are,
-time, place, and other detections).using that data guess what are they doing
+DATA & CONTEXT (KOBEDENSHI CLOUD)
+- You receive real-time JSON data from the KOBEDENSHI cloud.
+- This JSON may contain:
+  - Live camera data (keys like "live_main_tower_3f", "live_hall", "live_entrance", "live_data", etc.)
+  - Announcements, events, schedules, or other system information.
+- The frontend will sometimes send you a message that includes this JSON context in text form
+  (for example: [KOBEDENSHI College Real-Time Cloud Data: {...}]).
 
-IMPORTANT RULES ABOUT “WHAT YOU SEE”:
+YOUR RULES FOR USING JSON
+- You MUST treat the provided JSON as the ground truth for:
+  - What is happening now in each camera location.
+  - Current announcements, events, and system status.
+- You MUST NOT repeat the raw JSON back to the user.
+  Instead, you should:
+  - Read the JSON.
+  - Summarize it in clear, natural language.
+  - Explain it in a way that is easy to understand.
+- If the JSON contains multiple locations (e.g. live_main_tower_3f, live_hall, live_entrance),
+  you may:
+  - Focus on the locations that are clearly relevant to the user’s question (e.g. if they say "本館", look for the main building),
+  - Or give a short overview of all locations if the question is general (e.g. "What do you see now?").
+
+LIVE CAMERA BEHAVIOR (“WHAT DO YOU SEE?”)
 - If the user asks things like:
   - "What do you see?"
   - "What can you see now?"
   - "What is happening now?"
   - "今何が見える？"
-  - "今何を見ていますか?"
-  then you MUST answer using ONLY the latest live_data from the cloud, imagination.
-- If live_data is missing or cannot be understood, you must clearly say that you cannot
-  see anything right now or that the data format is unknown.
+  - "今何を見ていますか？"
+  - "今本館どう？" / "ホールどう？" / similar
+  then you SHOULD:
+  - Use ONLY the live camera JSON provided in the context (keys like "live_*").
+  - Describe what is happening at the locations, based on:
+    - number of people,
+    - where they are,
+    - time, and any other detection info.
+  - It is allowed to gently guess what people might be doing
+    (e.g. walking to class, waiting, talking), but keep all guesses realistic
+    and consistent with the data.
+- If live camera data is missing, empty, or cannot be understood:
+  - Clearly say that you cannot see anything right now or the live data is unavailable.
+  - Example:
+    "Right now I don’t have valid live camera data, so I can’t see what is happening."
+    「現在、有効なライブカメラのデータがないため、今の様子をお伝えできません。」
 
-General behavior:
-- Your primary role is to provide information, guidance, and assistance to students, faculty,
-  and prospective applicants related to the college.
-- You can use the cloud JSON data (announcements, events, etc.) when it is helpful.
-- You are proficient in both English and Japanese. Reply in the same language as the user,
-  or switch language immediately when the user requests it.
-- Maintain a helpful and professional tone.
-- Image analysis is not supported in this version.
+GENERAL ASSISTANT BEHAVIOR
+- Your primary role is to provide information, guidance, and assistance to:
+  - current students,
+  - faculty,
+  - prospective applicants,
+  especially about KOBEDENSHI College.
+- You can use:
+  - the JSON context (announcements, events, live data),
+  - and your general knowledge about schools, IT, study, etc.
+- When the question is not about real-time status, you may still use JSON
+  if it contains relevant info (e.g. current events or notices).
+
+LANGUAGE RULES
+- You are fully bilingual in English and Japanese.
+- Reply in the same language that the user used.
+- If the user mixes both, you may also mix both but keep the answer clear.
+- If the user explicitly asks to switch language, immediately reply in the requested language.
+- Be polite, friendly, and professional. For Japanese, use 丁寧語.
+
+LIMITATIONS
+- Image analysis of raw image files is NOT supported in this version.
+- If the user asks you to “look at” or “analyze” an image directly,
+  explain that you cannot process image files and can only use the JSON
+  and text information that you receive.
+
 `;
             const INITIAL_BOT_TEXT = "Hello! I am SUZI, the testing AI assistant for KOBEDENSHI College. I can speak both English and Japanese, and I can access real-time cloud data. How can I help you today?";
             
-            // --- API Setup (MODIFIED SECTION A: REMOVED KEY/URL, ADDED ENDPOINT) ---
-            // const API_KEY = ""; // REMOVED: Key is now secured on the server
-            // const TEXT_MODEL_URL = "..."; // REMOVED: Use the proxy endpoint
+            // --- API Setup ---
             const CHAT_ENDPOINT = "/api/chat"; // ADDED: New proxy endpoint
             const MAX_RETRIES = 5;
             
@@ -309,62 +355,6 @@ General behavior:
                 }
             }
 
-            // Try to find the newest live-data block in the cloud JSON
-            function extractLatestLiveBlock(collegeData) {
-                if (!collegeData) return null;
-
-                // 1) Old style: { ok: true, data: { history: [...] } }
-                if (collegeData.ok && collegeData.data && Array.isArray(collegeData.data.history)) {
-                    return collegeData.data;
-                }
-
-                // 2) Old style: { live_data: { history: [...] } }
-                if (collegeData.live_data && Array.isArray(collegeData.live_data.history)) {
-                    return collegeData.live_data;
-                }
-
-                // 3) New multi-location style: keys like "live_main_tower_3f"
-                for (const [key, value] of Object.entries(collegeData)) {
-                    if (key.startsWith("live_") && value && Array.isArray(value.history)) {
-                        return value;     // pick the first live_* block
-                    }
-                }
-
-                return null;
-            }
-
-            // Build a snapshot of the latest frame for ALL live_* locations
-            function buildLiveSnapshot(collegeData) {
-                if (!collegeData) return null;
-
-                const snapshot = {};
-
-                for (const [key, value] of Object.entries(collegeData)) {
-                    if (!key.startsWith("live_") || !value) continue;
-
-                    let latestFrame = null;
-
-                    // Pattern A: { history: [...] }
-                    if (Array.isArray(value.history) && value.history.length > 0) {
-                        latestFrame = value.history[value.history.length - 1];
-                    }
-                    // Pattern B: { data: { history: [...] } }
-                    else if (value.data && Array.isArray(value.data.history) && value.data.history.length > 0) {
-                        latestFrame = value.data.history[value.data.history.length - 1];
-                    }
-                    // Pattern C: { objects: [...] } (single frame style)
-                    else if (Array.isArray(value.objects)) {
-                        latestFrame = value;
-                    }
-
-                    if (latestFrame) {
-                        snapshot[key] = latestFrame;
-                    }
-                }
-
-                return snapshot;
-            }
-
 
             // Exponential backoff retry logic for fetch calls
             async function fetchWithRetry(url, options, retries = 0) {
@@ -395,21 +385,6 @@ General behavior:
                 }
             }
             
-            // --- New Helper for Silent Cloud Data Refresh (STEP 1) ---
-            async function fetchLatestCloudDataSilent() {
-                const DATA_ENDPOINT = `${CLOUD_DATA_URL}/all_json`;
-
-                try {
-                    const response = await fetchWithRetry(DATA_ENDPOINT, { method: 'GET' });
-                    const data = await response.json();
-                    collegeData = data;
-                    console.log("Silent cloud refresh OK:", collegeData);
-                    return collegeData;
-                } catch (error) {
-                    console.error("Silent cloud refresh FAILED:", error);
-                    return null;
-                }
-            }
             
             // --- Data Fetching Logic (Updated to control the Status Badge) ---
             async function fetchCloudData() {
@@ -420,7 +395,6 @@ General behavior:
                 statusBadge.className = "text-sm bg-gray-400 py-1 px-3 rounded-full font-medium text-white shadow-md";
 
                 try {
-                    // NOTE: This fetch still goes to the cloudflare endpoint, not the new proxy
                     const response = await fetchWithRetry(DATA_ENDPOINT, { method: 'GET' });
                     const data = await response.json();
                     collegeData = data;
@@ -431,7 +405,7 @@ General behavior:
                     statusBadge.textContent = "Online";
                     statusBadge.className = "text-sm bg-green-500 py-1 px-3 rounded-full font-medium text-white shadow-md";
 
-                    const infoMessage = `<i data-lucide="cloud-check" class="w-4 h-4 inline mr-1 text-green-600"></i> SUZI has successfully loaded real-time data from the KOBEDENSHI Cloud System. This data will be used for current announcements. <br>SUZIは神戸電子のクラウドシステムからリアルタイムデータの読み込みに成功しました。このデータは最新のお知らせに利用されます。`;
+                    const infoMessage = `<i data-lucide="cloud-check" class="w-4 h-4 inline mr-1 text-green-600"></i> SUZI has successfully loaded real-time data from the KOBEDENSHI Cloud System. All available data will be used to answer your questions. <br>SUZIは神戸電子のクラウドシステムからリアルタイムデータの読み込みに成功しました。すべての利用可能なデータが質問への回答に使用されます。`;
                     addMessage(infoMessage, 'bot');
                     
                 } catch (error) {
@@ -441,7 +415,7 @@ General behavior:
                     statusBadge.textContent = "Offline";
                     statusBadge.className = "text-sm bg-red-500 py-1 px-3 rounded-full font-medium text-white shadow-md";
 
-                    const errorMessage = `<i data-lucide="cloud-off" class="w-4 h-4 inline mr-1 text-red-600"></i> Alert: SUZI failed to load real-time data from the KOBEDENSHI cloud system. Answers may not reflect the absolute latest announcements.`;
+                    const errorMessage = `<i data-lucide="cloud-off" class="w-4 h-4 inline mr-1 text-red-600"></i> Alert: SUZI failed to load real-time data from the KOBEDENSHI cloud system. Answers may not reflect the absolute latest information.`;
                     addMessage(errorMessage, 'bot');
                 }
             }
@@ -449,7 +423,7 @@ General behavior:
             // Start fetching data immediately
             fetchCloudData();
             
-            // --- Core Logic: Handle Form Submission (MODIFIED) ---
+            // --- Core Logic: Handle Form Submission (SIMPLIFIED) ---
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const userQuery = input.value.trim();
@@ -462,7 +436,6 @@ General behavior:
                 sendBtn.disabled = true; 
 
                 const normalizedQuery = userQuery.toLowerCase();
-                let commandFound = false;
 
                 // --- Time question handling (local JS, no Gemini) ---
                 const timePatterns = [
@@ -507,171 +480,30 @@ The current local time at KOBEDENSHI College (Kobe, Japan) is **${timeStr}** on 
                     return;
                 }
 
-                // 2. Check for "what do you see" / "今何が見える" questions (AI-BASED VISION MODE)
-                const seeNowPatterns = [
-                    // English – simple forms
-                    "what do you see",
-                    "what you see",
-                    "what can you see",
-                    "what are you seeing",
-                    "what do you see now",
-                    "what you see now",
-                    "what can you see now",
-
-                    // English – user-like phrasings
-                    "tell me what you see",
-                    "tell me exactly what you see",
-                    "tell me what do you see",
-                    "tell me exactly what do you see",
-
-                    // Japanese – more variations
-                    "今何が見える",
-                    "今何が見えますか",
-                    "今何を見ている",
-                    "今何を見ていますか",
-                    "今何が映っている",
-                    "今何が映っていますか",
-                    "what's happening right now"
-                ];
-
-                const matchedSeeQuestion = seeNowPatterns.some(p =>
-                    normalizedQuery.includes(p.toLowerCase())
-                );
-
-                if (matchedSeeQuestion) {
-                    addMessage(userQuery, 'user');
-                    const loadingIndicator = addLoadingIndicator();
-
-                    // 🔹 Always refresh from cloud for this question (STEP 2)
-                    await fetchLatestCloudDataSilent(); 
-
-                    // 1️⃣ Build snapshot for ALL live_* locations
-                    const snapshot = buildLiveSnapshot(collegeData);
-
-                    if (!snapshot || Object.keys(snapshot).length === 0) {
-                        removeLoadingIndicator(loadingIndicator);
-                        addMessage(
-                            "I cannot see anything right now because valid live camera data was not found.\n\n現在、有効なライブカメラのデータが取得できないため、何も確認できません。",
-                            "bot"
-                        );
-                        input.value = '';
-                        input.disabled = false;
-                        sendBtn.disabled = false;
-                        input.focus();
-                        return;
-                    }
-
-                    // 2️⃣ Send ALL live_* JSON to the AI
-                    const visionPrompt = `
-You are SUZI, the testing AI assistant of KOBEDENSHI College.
-
-The user asked: "${userQuery}"
-
-You are given LIVE CAMERA JSON with detection results from multiple locations.
-Each key such as "live_本館", "live_hall", "live_エントランス" indicates the camera location.
-
-You MUST:
-- Use ONLY this JSON.
-- If the user mentions a specific location (e.g. 本館, ホール, エントランス),
-  focus your answer on that place.
-- If the location is not specified, you should summarize what is happening
-  across all locations.
-- Using that data, guess what people might be doing (for example: walking,
-  waiting, talking, entering the building), but keep your guesses realistic.
-- If something is not in the JSON, do NOT mention it.
-
-LIVE CAMERA JSON:${JSON.stringify(snapshot, null, 2)}
-`.trim();
-
-                    // Temporary push for this specific question
-                    const tempHistoryEntry = {
-                        role: "user",
-                        parts: [{ text: visionPrompt }]
-                    };
-                    chatHistory.push(tempHistoryEntry);
-
-                    const payload = {
-                        contents: chatHistory,
-                        tools: [{ "google_search": {} }],
-                        systemInstruction: {
-                            parts: [{ text: SYSTEM_PROMPT }]
-                        }
-                    };
-
-                    try {
-                        const response = await fetchWithRetry(CHAT_ENDPOINT, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(payload)
-                        });
-
-                        const result = await response.json();
-                        removeLoadingIndicator(loadingIndicator);
-
-                        if (result?.candidates?.[0]?.content?.parts?.[0]?.text) {
-                            const aiReply = result.candidates[0].content.parts[0].text;
-
-                            // Add AI reply to history permanently
-                            chatHistory.push({
-                                role: "model",
-                                parts: [{ text: aiReply }]
-                            });
-
-                            addMessage(aiReply, "bot");
-                        } else {
-                            addMessage("AI failed to describe the camera view.", "bot");
-                            // Remove the temporary user prompt if AI failed
-                            chatHistory.pop();
-                        }
-                    } catch (err) {
-                        removeLoadingIndicator(loadingIndicator);
-                        addMessage("AI vision error: " + err.message, "bot");
-                        // Remove the temporary user prompt if fetch failed
-                        chatHistory.pop();
-                    }
-
-                    input.value = '';
-                    input.disabled = false;
-                    sendBtn.disabled = false;
-                    input.focus();
-                    return;
-                }
-
-                // --- If none of the above were found, proceed to AI Text flow ---
+                // --- AI Text flow (now handles ALL other queries) ---
                 
-                // 3. Display user message
+                // 1. Display user message
                 addMessage(userQuery, 'user');
                 
                 const loadingIndicator = addLoadingIndicator();
 
-                // 4. Standard Text Flow
-                
-                // --- Construct Payload ---
-                const parts = [];
-                
-                // Add Text part
-                const textContent = userQuery;
-                parts.push({ text: textContent });
-
-
-                // 5. Prepare Context with Cloud Data
+                // 2. Prepare Context with ALL Cloud Data
                 let contextPrompt = "";
                 if (collegeData) {
-                    const dataString = JSON.stringify(collegeData);
-                    const safeDataString = dataString.substring(0, 1000); 
-                    // Add the context to the part that is sent to the model (in the history)
-                    contextPrompt = `[KOBEDENSHI College Real-Time Cloud Data: ${safeDataString}] \n\n `;
+                    // Send the ENTIRE JSON object as context to the AI
+                    const dataString = JSON.stringify(collegeData, null, 2); 
+                    contextPrompt = `[KOBEDENSHI College Real-Time Cloud Data (FULL JSON): ${dataString}] \n\n `;
                 }
                 
-                const fullUserMessage = contextPrompt + "User Query: " + textContent;
+                const fullUserMessage = contextPrompt + "User Query: " + userQuery;
                 
-                // 6. Add full user message (with context) to history
+                // 3. Add full user message (with context) to history
                 chatHistory.push({
                     role: "user",
                     parts: [{ text: fullUserMessage }] 
                 });
 
-                // 7. Construct API Payload for Text Understanding
+                // 4. Construct API Payload
                 const payload = {
                     contents: chatHistory, 
                     tools: [{ "google_search": {} }],
@@ -680,12 +512,11 @@ LIVE CAMERA JSON:${JSON.stringify(snapshot, null, 2)}
                     },
                 };
                 
-                // Fix: Overwrite parts of the last history entry with the user-only part for the API call 
-                // This is a common pattern when inserting a context prompt into the history for the model to see.
+                // Ensure the last history item has the full context for the API call
                 const lastHistoryItemIndex = chatHistory.length - 1;
                 payload.contents[lastHistoryItemIndex].parts = [{ text: fullUserMessage }]; 
                 
-                // Now, execute the call to your secure proxy endpoint (MODIFIED SECTION B)
+                // 5. Execute API Call
                 try {
                     const response = await fetchWithRetry(CHAT_ENDPOINT, { 
                         method: 'POST',
@@ -699,18 +530,18 @@ LIVE CAMERA JSON:${JSON.stringify(snapshot, null, 2)}
                         
                         const aiText = result.candidates[0].content.parts[0].text;
                         
-                        // 8. Add AI message to history
+                        // 6. Add AI message to history
                         chatHistory.push({
                             role: "model",
                             parts: [{ text: aiText }]
                         });
 
-                        // 9. Display response.
+                        // 7. Display response.
                         removeLoadingIndicator(loadingIndicator);
                         addMessage(aiText, 'bot', aiText); 
                         
                     } else {
-                        // 10. Handle error
+                        // 8. Handle error
                         removeLoadingIndicator(loadingIndicator);
                         addMessage("AIからの応答が空または不正な形式でした。", 'bot'); 
                         console.error("AI Response Error:", result);
@@ -719,7 +550,7 @@ LIVE CAMERA JSON:${JSON.stringify(snapshot, null, 2)}
                     }
 
                 } catch (error) {
-                    // 11. Handle error display
+                    // 9. Handle error display
                     removeLoadingIndicator(loadingIndicator);
                     addMessage(`エラーが発生しました: ${error.message}. 再試行してください。`, 'bot');
                     console.error("API Call Failed:", error);
@@ -727,7 +558,7 @@ LIVE CAMERA JSON:${JSON.stringify(snapshot, null, 2)}
                     chatHistory.pop(); 
                 }
                 
-                // 12. Unlock the UI and focus input
+                // 10. Unlock the UI and focus input
                 input.value = '';
                 input.disabled = false;
                 sendBtn.disabled = false; 
