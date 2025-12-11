@@ -186,7 +186,7 @@ This specific application, SUZI, was created by Information Technology Departmen
 KYAW KHAING TUN (キョーカイーントン). When asked who created you, you MUST ONLY mention
 the student creator, KYAW KHAING TUN. Do NOT mention Google or the foundational model developer.
 
-You receive real-time JSON data from the KOBEDENSHI cloud (live_data). This JSON represents
+You receive real-time JSON data from the KOBEDENSHI cloud (live_****). This JSON represents
 what the camera can currently see (for example: number of people, where they are,
 time, place, and other detections).using that data guess what are they doing
 
@@ -336,6 +336,30 @@ General behavior:
                     }
                     throw error;
                 }
+            }
+
+            // Try to find the newest live-data block in the cloud JSON
+            function extractLatestLiveBlock(collegeData) {
+                if (!collegeData) return null;
+
+                // 1) Old style: { ok: true, data: { history: [...] } }
+                if (collegeData.ok && collegeData.data && Array.isArray(collegeData.data.history)) {
+                    return collegeData.data;
+                }
+
+                // 2) Old style: { live_data: { history: [...] } }
+                if (collegeData.live_data && Array.isArray(collegeData.live_data.history)) {
+                    return collegeData.live_data;
+                }
+
+                // 3) New multi-location style: keys like "live_main_tower_3f"
+                for (const [key, value] of Object.entries(collegeData)) {
+                    if (key.startsWith("live_") && value && Array.isArray(value.history)) {
+                        return value;     // pick the first live_* block
+                    }
+                }
+
+                return null;
             }
             
             // --- New Helper for Silent Cloud Data Refresh (STEP 1) ---
@@ -488,17 +512,18 @@ The current local time at KOBEDENSHI College (Kobe, Japan) is **${timeStr}** on 
                     // 🔹 Always refresh from cloud for this question (STEP 2)
                     await fetchLatestCloudDataSilent(); 
 
-                    // 1️⃣ Get latest frame from live_data (Robust check)
+                    // 1️⃣ Get latest frame from live_data (supports multi-location)
                     let frame = null;
-                    let live = collegeData?.live_data || collegeData?.live || collegeData?.camera_view || null;
-
-                    if (Array.isArray(live?.history) && live.history.length > 0) {
-                        frame = live.history.at(-1);
-                    } else if (Array.isArray(live?.data?.history) && live.data.history.length > 0) {
-                        frame = live.data.history.at(-1);
-                    } else if (Array.isArray(live?.objects)) {
-                        // Single-frame style
-                        frame = live;
+                    const live = extractLatestLiveBlock(collegeData);
+                    
+                    if (live) {
+                        if (Array.isArray(live.history) && live.history.length > 0) {
+                            frame = live.history[live.history.length - 1]; // newest frame
+                        } else if (Array.isArray(live.data?.history) && live.data.history.length > 0) {
+                            frame = live.data.history[live.data.history.length - 1];
+                        } else if (Array.isArray(live.objects)) {
+                            frame = live; // single-frame format
+                        }
                     }
 
                     if (!frame) {
@@ -689,4 +714,3 @@ ${JSON.stringify(frame, null, 2)}
     </script>
 </body>
 </html>
-
